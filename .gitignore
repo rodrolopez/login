@@ -1,0 +1,25 @@
+# Dependencies and generated output
+node_modules/
+dist/
+backups/
+coverage/
+.nyc_output/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and package manager artifacts
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

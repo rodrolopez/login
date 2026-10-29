@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  postgres-test:
+    profiles: [test-infra]
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${TEST_PGDATABASE:-identity_api_test}
+      POSTGRES_USER: ${TEST_PGUSER:-identity_test}
+      POSTGRES_PASSWORD: ${TEST_PGPASSWORD:?Set TEST_PGPASSWORD in .env}
+    ports:
+      - "127.0.0.1:${TEST_PGPORT:-15433}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  redis-test:
+    profiles: [test-infra]
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${TEST_REDIS_PASSWORD:?Set TEST_REDIS_PASSWORD in .env}"]
+    environment:
+      REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?Set TEST_REDIS_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${TEST_REDIS_PORT:-16380}:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+volumes:
+  postgres_data:
+  redis_data:

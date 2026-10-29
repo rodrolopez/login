@@ -1,0 +1,130 @@
+name: identity-api-prod
+
+services:
+  api:
+    image: ${IDENTITY_API_IMAGE:-identity-api:production}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    expose:
+      - "3005"
+    environment:
+      NODE_ENV: production
+      PORT: "3005"
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${PGDATABASE:-identity_api}
+      PGUSER: ${PGUSER:-identity_app}
+      PGPASSWORD: ${PGPASSWORD:?Set the runtime database password in the production secret env file}
+      PGPOOL_MAX: ${PGPOOL_MAX:-20}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set the Redis password in the production secret env file}
+      REDIS_DB: "0"
+      OIDC_ISSUER: ${OIDC_ISSUER:?Set the public HTTPS OIDC issuer}
+      OIDC_CLIENTS: ${OIDC_CLIENTS:?Set registered production OIDC clients as JSON}
+      OIDC_COOKIE_KEYS: ${OIDC_COOKIE_KEYS:?Set OIDC cookie signing keys}
+      OIDC_JWKS: ${OIDC_JWKS:?Set OIDC signing JWKS}
+      OIDC_CONFIDENTIAL_CLIENT_SECRET: ${OIDC_CONFIDENTIAL_CLIENT_SECRET:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set the MFA encryption key}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:?Set the private OTLP collector trace endpoint}
+      OTEL_SERVICE_NAME: identity-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - private
+      - edge
+      - observability
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Set the PostgreSQL bootstrap administrator password}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - private
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2G
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?Set the Redis password in the production secret env file}
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+      - --protected-mode
+      - "yes"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set the Redis password in the production secret env file}
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - private
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  private:
+    internal: true
+  edge:
+    external: true
+    name: ${EDGE_NETWORK_NAME:-identity-edge}
+  observability:
+    external: true
+    name: ${OTEL_NETWORK_NAME:-identity-observability}
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
